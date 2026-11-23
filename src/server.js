@@ -1,63 +1,35 @@
-require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const helmet = require("helmet");
 
 const authRoutes = require("./modules/utilisateurs/auth.routes");
-const absenceRoutes = require("./modules/absence/absence.routes");
-const paiementsRoutes = require("./modules/paiements/paiements.routes");
+const absenceRoutes = require("./routes/absence/absence.routes");
+const paiementsRoutes = require("./routes/paiements/paiements.routes");
 
 const app = express();
-app.use(helmet());
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+app.use(cors());
+app.use(express.json());
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Origine non autorisée par CORS."));
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
-
-app.use(express.json({ limit: "1mb" }));
-
-app.get("/api/v1/health", (req, res) => {
-  res.status(200).json({
-    status: "OK",
-    service: "PKEN ONE COMMUNITY - Backend v2.1.2",
-    timestamp: new Date().toISOString()
-  });
+app.get("/health", (req, res) => {
+  return res.status(200).json({ status: "ok" });
 });
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/absence", absenceRoutes);
 app.use("/api/v1", paiementsRoutes);
 
-app.use((req, res) => {
-  res.status(404).json({
-    code: "ROUTE_NOT_FOUND",
-    message: `Route introuvable : ${req.method} ${req.originalUrl}`
-  });
-});
-
+// Gestion des erreurs
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
-  res.status(status).json({
-    code: err.code || "INTERNAL_SERVER_ERROR",
-    message: err.message || "Erreur interne du serveur."
+  return res.status(status).json({
+    message: err.message || "Erreur interne du serveur.",
+    code: err.code || "INTERNAL_ERROR"
   });
 });
 
-const PORT = Number(process.env.PORT) || 10000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`PKEN ONE COMMUNITY Backend v2.1.2 démarré sur le port ${PORT}`);
+  console.log(`Serveur PKEN démarré sur le port ${PORT}`);
 });
+
+module.exports = app;
