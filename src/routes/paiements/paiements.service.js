@@ -32,16 +32,13 @@ async function listerProjets(acteur) {
 
   let requete = supabase.from("projets").select("*").order("created_at", { ascending: false });
 
-  // Cloisonnement strict par rôle et pôle dans le service
   if (role === "SUPER_ADMIN") {
-    // Accès global à tous les projets
   } else if (role === "RESPONSABLE_POLE" || role === "COLLABORATEUR") {
     if (!acteur.pole_id) {
       return [];
     }
     requete = requete.eq("pole_id", acteur.pole_id);
   } else {
-    // CLIENT : uniquement les projets rattachés à son compte
     requete = requete.eq("client_id", acteur.id);
   }
 
@@ -228,7 +225,6 @@ async function confirmerPaiement(acteur, paiementId) {
     throw err;
   }
 
-  // Cloisonnement strict : un Responsable de Pôle ne peut confirmer qu'un paiement de son propre pôle
   if (role === "RESPONSABLE_POLE" && acteur.pole_id !== existingPayment.pole_id) {
     const err = new Error("Accès refusé : vous ne pouvez pas confirmer un paiement d'un autre pôle.");
     err.statusCode = 403;
@@ -249,22 +245,30 @@ async function confirmerPaiement(acteur, paiementId) {
     throw err;
   }
 
-  if (existingPayment.statut_confirmation !== "CONFIRME") {
-    const { error: updatePayError } = await supabase
-      .from("paiements")
-      .update({
-        statut_confirmation: "CONFIRME",
-        confirme_par_id: acteur.id,
-        confirme_le: new Date().toISOString()
-      })
-      .eq("id", existingPayment.id);
+  // CORRECTION BUG DOUBLE CONFIRMATION : si déjà confirmé, on ne rajoute RIEN
+  if (existingPayment.statut_confirmation === "CONFIRME") {
+    return {
+      paiement_id: existingPayment.id,
+      statut_confirmation: "CONFIRME",
+      numero_recu: existingPayment.numero_recu,
+      projet: projet
+    };
+  }
 
-    if (updatePayError) {
-      const err = new Error("Impossible de confirmer le paiement.");
-      err.statusCode = 500;
-      err.code = "PAYMENT_CONFIRM_FAILED";
-      throw err;
-    }
+  const { error: updatePayError } = await supabase
+    .from("paiements")
+    .update({
+      statut_confirmation: "CONFIRME",
+      confirme_par_id: acteur.id,
+      confirme_le: new Date().toISOString()
+    })
+    .eq("id", existingPayment.id);
+
+  if (updatePayError) {
+    const err = new Error("Impossible de confirmer le paiement.");
+    err.statusCode = 500;
+    err.code = "PAYMENT_CONFIRM_FAILED";
+    throw err;
   }
 
   const nouveauMontantPaye = Number(projet.montant_paye_kz || 0) + Number(existingPayment.montant_kz || 0);
